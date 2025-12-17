@@ -311,9 +311,10 @@ async def analyse_layout(images: list[pathlib.Path]):
     return results
 
 
-def overlay(image, result):
+def overlay_solid(image, result):
     if not isinstance(image, Image.Image):
-        image = Image.open(image).convert("RGB")
+        image = Image.open(image)
+    image = image.convert("RGB")
     draw = ImageDraw.Draw(image, "RGBA")
 
     def _draw_polygons(polys, color):
@@ -326,8 +327,33 @@ def overlay(image, result):
             for p in poly_iter:
                 draw.polygon(p.exterior.coords, fill=color)
 
-    _draw_polygons(result["image_polys"], (60, 180, 75, 128))
-    _draw_polygons(result["text_polys"], (230, 25, 75, 128))
+    _draw_polygons(result["image_polys"], (60, 180, 75, 100))
+    _draw_polygons(result["text_polys"], (230, 25, 75, 100))
+
+    return image
+
+
+def overlay_outline(image, result):
+    if not isinstance(image, Image.Image):
+        image = Image.open(image)
+    image = image.convert("RGB")
+    draw = ImageDraw.Draw(image, "RGBA")
+
+    def _draw_polygons(polys, color, width=4):
+        for poly in polys:
+            if isinstance(poly, MultiPolygon):
+                poly_iter = poly.geoms
+            else:
+                poly_iter = [poly]
+
+            for p in poly_iter:
+                # Draw only the outline of the polygon
+                draw.polygon(p.exterior.coords, outline=color, width=width)
+
+    # Draw outlines for image polygons (green)
+    _draw_polygons(result["image_polys"], (60, 180, 75, 255), width=2)
+    # Draw outlines for text polygons (red)
+    _draw_polygons(result["text_polys"], (230, 25, 75, 255), width=2)
 
     return image
 
