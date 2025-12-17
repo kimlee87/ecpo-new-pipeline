@@ -107,6 +107,9 @@ def calculate_atomics(polys):
 
 def black_content(binary, poly):
     """Count of black pixels in the polygon."""
+    if poly.area == 0.0:
+        return 0
+
     cropped_img, mask_cropped, _ = crop_polygon(binary, poly)
     return np.sum(mask_cropped & (cropped_img == 0))
 
@@ -128,19 +131,22 @@ def average_squaricity_criterion(polys):
     return _average_squaricity_criterion
 
 
-def overlap_threshold_function(threshold=0.9):
+def overlap_threshold_function(polys, threshold=0.9):
     """Overlap percentage thresholding for two polygons.
 
     Values are always in [0, 1] with 1 for identical polygons.
     """
 
-    def _func(p, q):
-        return p.intersection(q).area / p.union(q).area > threshold
+    def _func(i, j):
+        return (
+            polys[i].intersection(polys[j]).area / polys[i].union(polys[j]).area
+            > threshold
+        )
 
     return _func
 
 
-def black_overlap_function(binary, threshold=0.98):
+def black_overlap_function(binary, polys, threshold=0.98):
     """Overlap percentage of the black pixels of two polygons.
 
     Values are always in [0, 1] with 1 for all black content in the overlap.
@@ -148,9 +154,18 @@ def black_overlap_function(binary, threshold=0.98):
     anything.
     """
 
-    def _func(p, q):
+    atomics, poly_atomics = calculate_atomics(polys)
+    atomics_values = [black_content(binary, a) for a in atomics]
+
+    def _func(i, j):
+        seti = set(poly_atomics[i])
+        setj = set(poly_atomics[j])
+        intersection = seti.intersection(setj)
+        union = seti.union(setj)
+
         return (
-            black_content(binary, p.intersection(q)) / black_content(binary, p.union(q))
+            sum((atomics_values[i] for i in intersection), 0)
+            / sum((atomics_values[i] for i in union), 0)
             > threshold
         )
 
@@ -248,7 +263,7 @@ def filter_redundant_polys(polys, criterion):
     for i, p in enumerate(polys):
         for j, q in enumerate(polys):
             if i < j:
-                if criterion(p, q) > 0.9:
+                if criterion(i, j):
                     uf.union(p, q)
 
     return [unary_union(list(s)) for s in uf.to_sets()]
@@ -284,26 +299,6 @@ def disjoint_groups(items, is_disjoint):
     return list(uf.to_sets())
 
 
-def maximum_cover_patch_heuristic(img, polys):
-    """The heuristic that maximizes patch number while covering ."""
-
-    img = otsu_binarization(img)
-    polys = filter_redundant_polys(polys, overlap_threshold_function())
-
-    atomics, poly_atomics = calculate_atomics(polys)
-    atomics_values = [black_content(img, a) for a in atomics]
-    edges = intersection_edges(polys)
-
-    res = _cover_heuristic.find_optimal_cover(0.98, edges, poly_atomics, atomics_values)
-    best = max(res, key=average_squaricity_criterion(polys))
-
-    from ecpo_pipeline.detect import disjoint_groups
-
-    groups = disjoint_groups([polys[b] for b in best], exact_disjoint_criterion)
-
-    return [unary_union(list(g)) for g in groups]
-
-
 def impl_layout_detection(img, text_threshold=0.05):
     # Run the PaddleOCR layout detection
     layout = detector.predict(
@@ -330,16 +325,25 @@ def impl_layout_detection(img, text_threshold=0.05):
     # Subtract all images from the text polygons
     text_polys = subtract_images(text_polys, image_polys)
 
+    # Drop any polygons that do not contain more than 10 black pixels
+    text_polys = [p for p in text_polys if black_content(img, p) > 10]
+
     # Filter polygons that do not add value
-    text_polys = filter_redundant_polys(text_polys, overlap_threshold_function())
+    # text_polys = filter_redundant_polys(text_polys, overlap_threshold_function(text_polys))
+    # The following one would be better, but is way too slow right now
+    text_polys = filter_redundant_polys(
+        text_polys, black_overlap_function(img, text_polys)
+    )
 
     # This happened in practice.
     # TODO: investigate why this is even possible.
     if len(text_polys) == 0:
         return text_polys, image_polys
 
-    # Look for disjoint groups of text polygons to apply a divide and conquer approach
-    # poly_groups = disjoint_groups(text_polys, fuzzy_disjoint_criterion(0.98))
+    # Look for disjoint groups of text polygons to apply a divide and conquer approach.
+    # We have a choice between making this with an exact disjoint criterion or a fuzzy
+    # one. So far, I have been switching back and forth.
+    # poly_groups = disjoint_groups(text_polys, fuzzy_disjoint_criterion(0.95))
     poly_groups = disjoint_groups(text_polys, exact_disjoint_criterion)
 
     # We found a trivial split, so we can do divide and conquer
@@ -373,7 +377,7 @@ def impl_layout_detection(img, text_threshold=0.05):
 
     # Run the C++ brute-force algorithm with decreasing threshold
     def _bruteforce(threshold):
-        if threshold < 0.8:
+        if threshold < 0.75:
             # If we reduce the threshold, so drastically, something is terribly wrong.
             # We should investigate this, but for now, I just return the union of polygons
             # as one.

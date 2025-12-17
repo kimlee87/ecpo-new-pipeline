@@ -351,9 +351,9 @@ def overlay_outline(image, result):
                 draw.polygon(p.exterior.coords, outline=color, width=width)
 
     # Draw outlines for image polygons (green)
-    _draw_polygons(result["image_polys"], (60, 180, 75, 255), width=2)
+    _draw_polygons(result["image_polys"], (60, 180, 75, 255), width=4)
     # Draw outlines for text polygons (red)
-    _draw_polygons(result["text_polys"], (230, 25, 75, 255), width=2)
+    _draw_polygons(result["text_polys"], (230, 25, 75, 255), width=4)
 
     return image
 
