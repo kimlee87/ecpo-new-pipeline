@@ -95,9 +95,15 @@ find_optimal_cover(double coverage_threshold,
       std::max(edge.first, edge.second));
   }
 
-  // Calculate total converage once
+  // Calculate total converage once. This is *not* the sum of all atomics,
+  // as holes in the polygon will also generate atomics, so we need to build
+  // the union of all polygons manually.
+  std::unordered_set<int> all_poly_atomics;
+  for (const auto& atomics : polys_to_atomics) {
+    all_poly_atomics.insert(atomics.begin(), atomics.end());
+  }
   double total =
-    std::accumulate(atomics_values.begin(), atomics_values.end(), 0.0);
+    std::accumulate(all_poly_atomics.begin(), all_poly_atomics.end(), 0.0);
 
   // Pre-allocate some structures to avoid all dynamic allocations in the loop
   std::unordered_set<int> subset_indices;
