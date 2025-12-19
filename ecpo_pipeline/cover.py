@@ -329,11 +329,13 @@ def impl_layout_detection(img, text_threshold=0.05):
     text_polys = [p for p in text_polys if black_content(img, p) > 10]
 
     # Filter polygons that do not add value
-    # text_polys = filter_redundant_polys(text_polys, overlap_threshold_function(text_polys))
-    # The following one would be better, but is way too slow right now
     text_polys = filter_redundant_polys(
-        text_polys, black_overlap_function(img, text_polys)
+        text_polys, overlap_threshold_function(text_polys)
     )
+    # The following one would be better, but is way too slow right now
+    # text_polys = filter_redundant_polys(
+    #     text_polys, black_overlap_function(img, text_polys)
+    # )
 
     # This happened in practice.
     # TODO: investigate why this is even possible.
