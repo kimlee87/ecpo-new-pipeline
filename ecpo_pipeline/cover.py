@@ -307,7 +307,6 @@ def impl_layout_detection(img, text_threshold=0.05):
             1.0,
             {
                 0: text_threshold,
-                1: 0.25,
                 2: text_threshold,
             },
         ),
@@ -318,12 +317,6 @@ def impl_layout_detection(img, text_threshold=0.05):
     text_polys = [
         box_to_polygon(*b["coordinate"]) for b in boxes if b["cls_id"] in (0, 2)
     ]
-    image_polys = [
-        box_to_polygon(*b["coordinate"]) for b in boxes if b["cls_id"] in (1,)
-    ]
-
-    # Subtract all images from the text polygons
-    text_polys = subtract_images(text_polys, image_polys)
 
     # Drop any polygons that do not contain more than 10 black pixels
     text_polys = [p for p in text_polys if black_content(img, p) > 10]
@@ -340,7 +333,7 @@ def impl_layout_detection(img, text_threshold=0.05):
     # This happened in practice.
     # TODO: investigate why this is even possible.
     if len(text_polys) == 0:
-        return text_polys, image_polys
+        return text_polys
 
     # Look for disjoint groups of text polygons to apply a divide and conquer approach.
     # We have a choice between making this with an exact disjoint criterion or a fuzzy
@@ -350,16 +343,19 @@ def impl_layout_detection(img, text_threshold=0.05):
 
     # We found a trivial split, so we can do divide and conquer
     if len(poly_groups) > 1:
+        print(
+            f"Dividing into {len(poly_groups)} groups of size {', '.join([str(len(pg)) for pg in poly_groups])}"
+        )
         # Crop the image according to the polygon groups
         crops = [crop_polygon(img, unary_union(list(pg))) for pg in poly_groups]
 
         # Recursively call this function for each group and combine the results
         results = []
         for cimg, _, (xoff, yoff) in crops:
-            for cpoly in impl_layout_detection(cimg)[0]:
+            for cpoly in impl_layout_detection(cimg):
                 results.append(translate(cpoly, xoff=xoff, yoff=yoff))
 
-        return results, image_polys
+        return results
 
     # If we reach this, all polygons were connected and we need to find correct
     # polygons by selecting a subset. However, our algorithm to do so is of exponential
@@ -401,7 +397,7 @@ def impl_layout_detection(img, text_threshold=0.05):
     # Now join all polygons that are part of the same connected component
     groups = disjoint_groups([text_polys[b] for b in best], exact_disjoint_criterion)
 
-    return [unary_union(list(g)) for g in groups], image_polys
+    return [unary_union(list(g)) for g in groups]
 
 
 def layout_detection(img):
@@ -413,3 +409,24 @@ def layout_detection(img):
     # Dispatch to an impl function, as this function might be called recursively
     # with additional parameters.
     return impl_layout_detection(binarized)
+
+
+def detect_and_subtract_images(img, threshold=0.25):
+    layout = detector.predict(
+        img,
+        threshold=poor_mans_defaultdict(
+            1.0,
+            {1: threshold},
+        ),
+    )
+    boxes = layout[0]["boxes"]
+    image_polys = [
+        box_to_polygon(*b["coordinate"]) for b in boxes if b["cls_id"] in (1,)
+    ]
+
+    img = Image.fromarray(img)
+    draw = ImageDraw.Draw(img)
+    for p in image_polys:
+        draw.polygon(list(p.exterior.coords), fill=255)
+
+    return np.array(img), image_polys
