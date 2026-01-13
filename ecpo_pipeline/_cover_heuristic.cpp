@@ -102,8 +102,11 @@ find_optimal_cover(double coverage_threshold,
   for (const auto& atomics : polys_to_atomics) {
     all_poly_atomics.insert(atomics.begin(), atomics.end());
   }
-  double total =
-    std::accumulate(all_poly_atomics.begin(), all_poly_atomics.end(), 0.0);
+  double total = std::accumulate(
+    all_poly_atomics.begin(),
+    all_poly_atomics.end(),
+    0.0,
+    [&atomics_values](double s, int i) { return s + atomics_values[i]; });
 
   // Pre-allocate some structures to avoid all dynamic allocations in the loop
   std::unordered_set<int> subset_indices;
