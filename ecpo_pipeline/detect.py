@@ -339,7 +339,7 @@ def overlay_outline(image, result):
     image = image.convert("RGB")
     draw = ImageDraw.Draw(image, "RGBA")
 
-    def _draw_polygons(polys, color, width=4):
+    def _draw_polygons(polys, line_color, width=4, fill_color=None):
         for poly in polys:
             if isinstance(poly, MultiPolygon):
                 poly_iter = poly.geoms
@@ -348,12 +348,30 @@ def overlay_outline(image, result):
 
             for p in poly_iter:
                 # Draw only the outline of the polygon
-                draw.polygon(p.exterior.coords, outline=color, width=width)
+                draw.polygon(
+                    p.exterior.coords, outline=line_color, width=width, fill=fill_color
+                )
+
+    # fill color text
+    fill_color_text = (231, 76, 60, 77)
+    fill_color_heading = (230, 126, 34, 77)
+    fill_color_image = (52, 152, 219, 77)
 
     # Draw outlines for image polygons (green)
-    _draw_polygons(result["image_polys"], (60, 180, 75, 255), width=4)
+    _draw_polygons(
+        result["image_polys"], (52, 152, 219, 255), width=4, fill_color=fill_color_image
+    )
     # Draw outlines for text polygons (red)
-    _draw_polygons(result["text_polys"], (230, 25, 75, 255), width=4)
+    _draw_polygons(
+        result["text_polys"], (231, 76, 60, 255), width=4, fill_color=fill_color_text
+    )
+    # Draw outlines for heading polygons (orange)
+    _draw_polygons(
+        result["heading_polys"],
+        (230, 126, 34, 255),
+        width=4,
+        fill_color=fill_color_heading,
+    )
 
     return image
 
@@ -372,5 +390,5 @@ if __name__ == "__main__":
     pathlib.Path("output_layout").mkdir(exist_ok=True)
 
     for stem, image in tqdm.tqdm(result.items(), desc="Saving layout overlays"):
-        overlay_img = overlay(image["imagefile"], image["boxes"])
+        overlay_img = overlay_outline(image["imagefile"], image["boxes"])
         overlay_img.save(pathlib.Path("output_layout") / f"{stem}_layout.png")

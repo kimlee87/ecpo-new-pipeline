@@ -35,6 +35,7 @@ dependencies = [
     "numpy",
     "paddlepaddle==3.2.0",
     "paddleocr[all]==3.3.1",
+    "scikit-image"
 ]
 
 # The following section contains setuptools-specific configuration
